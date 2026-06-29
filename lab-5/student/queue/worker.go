@@ -46,7 +46,36 @@ import (
 // TODO: implement this function
 func RunWorkerPool(brokerAddr, queueName string, numWorkers int) {
 	// YOUR CODE HERE
-	_ = rand.Intn   // remove when implementing
-	_ = time.Sleep  // remove when implementing
-	fmt.Println("[WORKERPOOL] Not implemented yet — complete Task 7")
+	for i := 0; i < numWorkers; i++ {
+		workerID := fmt.Sprintf("worker-%d", i+1)
+		go func(workerID string) {
+			for {
+				var deqReply DequeueReply
+				err := callRPC(brokerAddr, "QueueRPC.Dequeue",
+					&DequeueArgs{QueueName: queueName, WorkerID: workerID}, &deqReply)
+				if err != nil {
+					fmt.Printf("[WORKER %s] Dequeue failed: %v\n", workerID, err)
+					time.Sleep(200 * time.Millisecond)
+					continue
+				}
+
+				task := deqReply.Task
+				fmt.Printf("[WORKER %s] Processing task=%s payload=%q\n", workerID, task.ID, task.Payload)
+				time.Sleep(time.Duration(rand.Intn(200)) * time.Millisecond)
+
+				var ackReply AckReply
+				err = callRPC(brokerAddr, "QueueRPC.Ack", &AckArgs{TaskID: task.ID}, &ackReply)
+				if err != nil {
+					fmt.Printf("[WORKER %s] Ack failed for task=%s: %v\n", workerID, task.ID, err)
+					continue
+				}
+				if !ackReply.Success {
+					fmt.Printf("[WORKER %s] Ack rejected for task=%s\n", workerID, task.ID)
+					continue
+				}
+
+				fmt.Printf("[WORKER %s] Done task=%s\n", workerID, task.ID)
+			}
+		}(workerID)
+	}
 }

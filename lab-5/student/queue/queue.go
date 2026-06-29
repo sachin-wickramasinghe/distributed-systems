@@ -60,7 +60,11 @@ type QueueManager struct {
 // TODO: implement this function
 func NewQueueManager() *QueueManager {
 	// YOUR CODE HERE
-	return nil
+	return &QueueManager{
+		queues:    make(map[string]chan Task),
+		inFlight:  make(map[string]inFlight),
+		queueSize: 100,
+	}
 }
 
 // getOrCreateQueue returns the channel for a queue name,
@@ -92,6 +96,9 @@ func (qm *QueueManager) getOrCreateQueue(name string) chan Task {
 // TODO: implement this function
 func (qm *QueueManager) Enqueue(queueName string, task Task) {
 	// YOUR CODE HERE
+	ch := qm.getOrCreateQueue(queueName)
+	ch <- task
+	fmt.Printf("[QUEUE] Enqueued task=%s to queue=%q\n", task.ID, queueName)
 }
 
 // ============================================================
@@ -113,7 +120,15 @@ func (qm *QueueManager) Enqueue(queueName string, task Task) {
 // TODO: implement this function
 func (qm *QueueManager) Dequeue(queueName, workerID string) Task {
 	// YOUR CODE HERE
-	return Task{}
+	ch := qm.getOrCreateQueue(queueName)
+	task := <-ch
+
+	qm.mu.Lock()
+	qm.inFlight[task.ID] = inFlight{task: task, workerID: workerID, startTime: time.Now()}
+	qm.mu.Unlock()
+
+	fmt.Printf("[QUEUE] Dequeued task=%s by worker=%s\n", task.ID, workerID)
+	return task
 }
 
 // ============================================================
@@ -140,7 +155,16 @@ func (qm *QueueManager) Dequeue(queueName, workerID string) Task {
 // TODO: implement this function
 func (qm *QueueManager) Ack(taskID string) bool {
 	// YOUR CODE HERE
-	return false
+	qm.mu.Lock()
+	defer qm.mu.Unlock()
+
+	if _, exists := qm.inFlight[taskID]; !exists {
+		return false
+	}
+
+	delete(qm.inFlight, taskID)
+	fmt.Printf("[QUEUE] Acked task=%s\n", taskID)
+	return true
 }
 
 // ============================================================
@@ -161,7 +185,26 @@ func (qm *QueueManager) Ack(taskID string) bool {
 // TODO: implement this function
 func (qm *QueueManager) Nack(taskID string) bool {
 	// YOUR CODE HERE
-	return false
+	qm.mu.Lock()
+	defer qm.mu.Unlock()
+
+	record, exists := qm.inFlight[taskID]
+	if !exists {
+		return false
+	}
+
+	delete(qm.inFlight, taskID)
+	record.task.Attempts++
+
+	ch, ok := qm.queues[record.task.QueueName]
+	if !ok {
+		ch = make(chan Task, qm.queueSize)
+		qm.queues[record.task.QueueName] = ch
+	}
+
+	ch <- record.task
+	fmt.Printf("[QUEUE] Nacked task=%s — redelivering (attempt %d)\n", taskID, record.task.Attempts)
+	return true
 }
 
 // ============================================================

@@ -1,5 +1,3 @@
-version: '3.8'
-
 # ============================================================
 # Lab 05 — Event Queues and Pub/Sub
 # Docker Compose for local student setup
@@ -61,7 +59,12 @@ services:
     hostname: subscriber1
     networks: [lab05]
     environment:
-      ROLE: idle
+      ROLE: subscriber
+      BROKER_ADDR: pubsub-broker:9001
+      SUB_TOPIC: news
+      SUB_ID: sub1
+      SUB_PORT: 9100
+      SUB_HOST: subscriber1
     depends_on: [pubsub-broker]
 
   subscriber2:
@@ -70,7 +73,12 @@ services:
     hostname: subscriber2
     networks: [lab05]
     environment:
-      ROLE: idle
+      ROLE: subscriber
+      BROKER_ADDR: pubsub-broker:9001
+      SUB_TOPIC: news
+      SUB_ID: sub2
+      SUB_PORT: 9100
+      SUB_HOST: subscriber2
     depends_on: [pubsub-broker]
 
   subscriber3:
@@ -79,5 +87,10 @@ services:
     hostname: subscriber3
     networks: [lab05]
     environment:
-      ROLE: idle
+      ROLE: subscriber
+      BROKER_ADDR: pubsub-broker:9001
+      SUB_TOPIC: news
+      SUB_ID: sub3
+      SUB_PORT: 9100
+      SUB_HOST: subscriber3
     depends_on: [pubsub-broker]

@@ -54,7 +54,10 @@ type Broker struct {
 // TODO: implement this function
 func NewBroker() *Broker {
 	// YOUR CODE HERE
-	return nil
+	return &Broker{
+		subscribers: make(map[string][]Subscriber),
+		seqCounters: make(map[string]int64),
+	}
 }
 
 // ============================================================
@@ -70,6 +73,10 @@ func NewBroker() *Broker {
 // TODO: implement this function
 func (b *Broker) Subscribe(topic string, sub Subscriber) {
 	// YOUR CODE HERE
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.subscribers[topic] = append(b.subscribers[topic], sub)
+	fmt.Printf("[BROKER] Subscriber %s joined topic=%q\n", sub.ID, topic)
 }
 
 // ============================================================
@@ -85,6 +92,18 @@ func (b *Broker) Subscribe(topic string, sub Subscriber) {
 // TODO: implement this function
 func (b *Broker) Unsubscribe(topic, subID string) {
 	// YOUR CODE HERE
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	current := b.subscribers[topic]
+	filtered := make([]Subscriber, 0, len(current))
+	for _, sub := range current {
+		if sub.ID != subID {
+			filtered = append(filtered, sub)
+		}
+	}
+	b.subscribers[topic] = filtered
+	fmt.Printf("[BROKER] Subscriber %s left topic=%q\n", subID, topic)
 }
 
 // ============================================================
@@ -102,7 +121,30 @@ func (b *Broker) Unsubscribe(topic, subID string) {
 // TODO: implement this function
 func (b *Broker) Publish(topic, key, value string) int {
 	// YOUR CODE HERE
-	return 0
+	b.mu.Lock()
+	b.seqCounters[topic]++
+	seq := b.seqCounters[topic]
+	subs := append([]Subscriber(nil), b.subscribers[topic]...)
+	b.mu.Unlock()
+
+	event := Event{Topic: topic, Key: key, Value: value, Seq: seq}
+
+	var wg sync.WaitGroup
+	for _, sub := range subs {
+		wg.Add(1)
+		go func(sub Subscriber) {
+			defer wg.Done()
+			var reply DeliverReply
+			err := callRPC(sub.Addr, "SubscriberRPC.Deliver", &DeliverArgs{Event: event}, &reply)
+			if err != nil {
+				fmt.Printf("[BROKER] Deliver to subscriber=%s at %s failed: %v\n", sub.ID, sub.Addr, err)
+			}
+		}(sub)
+	}
+	wg.Wait()
+
+	fmt.Printf("[BROKER] Published topic=%q key=%q -> %d subscribers\n", topic, key, len(subs))
+	return len(subs)
 }
 
 // ============================================================
